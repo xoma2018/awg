@@ -60,16 +60,6 @@ install_awg_packages() {
             exit 1
         fi
     fi
-    
-           opkg install "$AWG_DIR/$LUCI_APP_AMNEZIAWG_FILENAME"
-
-        if [ $? -eq 0 ]; then
-            echo "luci-app-amneziawg file downloaded successfully"
-        else
-            echo "Error installing luci-app-amneziawg. Please, install luci-app-amneziawg manually and run the script again"
-            exit 1
-        fi
-    fi
 
     rm -rf "$AWG_DIR"
 }
