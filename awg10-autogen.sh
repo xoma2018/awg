@@ -109,23 +109,54 @@ EndpointIP=$(echo "$Endpoint" | cut -d':' -f1)
 EndpointPort=$(echo "$Endpoint" | cut -d':' -f2)
 
 ### =========================
-### CREATE AWG INTERFACE
+### REMOVE OLD CONFIG
 ### =========================
 
 INTERFACE_NAME="awg10"
 CONFIG_NAME="amneziawg_awg10"
-PROTO="amneziawg"
 ZONE_NAME="awg"
 
+echo "Removing old awg10 config if exists..."
+
+ifdown $INTERFACE_NAME 2>/dev/null
+
+# remove peer
+while uci show network | grep -q "@${CONFIG_NAME}"; do
+	uci delete network.@${CONFIG_NAME}[0]
+done
+
+# remove interface
+uci -q delete network.${INTERFACE_NAME}
+uci commit network
+
+# remove firewall zone + forwarding
+i=0
+while uci -q get firewall.@zone[$i] >/dev/null; do
+	if [ "$(uci get firewall.@zone[$i].name)" = "$ZONE_NAME" ]; then
+		uci delete firewall.@zone[$i]
+		break
+	fi
+	i=$((i+1))
+done
+
+i=0
+while uci -q get firewall.@forwarding[$i] >/dev/null; do
+	if [ "$(uci get firewall.@forwarding[$i].dest 2>/dev/null)" = "$ZONE_NAME" ]; then
+		uci delete firewall.@forwarding[$i]
+		break
+	fi
+	i=$((i+1))
+done
+
+uci commit firewall
+
+### =========================
+### CREATE AWG INTERFACE
+### =========================
+
 uci set network.${INTERFACE_NAME}=interface
-uci set network.${INTERFACE_NAME}.proto=$PROTO
-
-if ! uci show network | grep -q ${CONFIG_NAME}; then
-	uci add network ${CONFIG_NAME}
-fi
-
+uci set network.${INTERFACE_NAME}.proto=amneziawg
 uci set network.${INTERFACE_NAME}.private_key=$PrivateKey
-uci del network.${INTERFACE_NAME}.addresses
 uci add_list network.${INTERFACE_NAME}.addresses=$Address
 uci set network.${INTERFACE_NAME}.mtu=$MTU
 
@@ -138,9 +169,9 @@ uci set network.${INTERFACE_NAME}.awg_h1=$H1
 uci set network.${INTERFACE_NAME}.awg_h2=$H2
 uci set network.${INTERFACE_NAME}.awg_h3=$H3
 uci set network.${INTERFACE_NAME}.awg_h4=$H4
-
 uci set network.${INTERFACE_NAME}.nohostroute='1'
 
+uci add network $CONFIG_NAME
 uci set network.@${CONFIG_NAME}[-1].description="${INTERFACE_NAME}_peer"
 uci set network.@${CONFIG_NAME}[-1].public_key=$PublicKey
 uci set network.@${CONFIG_NAME}[-1].endpoint_host=$EndpointIP
@@ -152,38 +183,32 @@ uci set network.@${CONFIG_NAME}[-1].route_allowed_ips='0'
 uci commit network
 
 ### =========================
-### FIREWALL (MINIMAL)
+### FIREWALL
 ### =========================
 
-if ! uci show firewall | grep -q "@zone.*name='${ZONE_NAME}'"; then
-	uci add firewall zone
-	uci set firewall.@zone[-1].name=$ZONE_NAME
-	uci set firewall.@zone[-1].network=$INTERFACE_NAME
-	uci set firewall.@zone[-1].forward='REJECT'
-	uci set firewall.@zone[-1].output='ACCEPT'
-	uci set firewall.@zone[-1].input='REJECT'
-	uci set firewall.@zone[-1].masq='1'
-	uci set firewall.@zone[-1].mtu_fix='1'
-	uci set firewall.@zone[-1].family='ipv4'
-	uci commit firewall
-fi
+uci add firewall zone
+uci set firewall.@zone[-1].name=$ZONE_NAME
+uci set firewall.@zone[-1].network=$INTERFACE_NAME
+uci set firewall.@zone[-1].input='REJECT'
+uci set firewall.@zone[-1].output='ACCEPT'
+uci set firewall.@zone[-1].forward='REJECT'
+uci set firewall.@zone[-1].masq='1'
+uci set firewall.@zone[-1].mtu_fix='1'
+uci set firewall.@zone[-1].family='ipv4'
 
-if ! uci show firewall | grep -q "@forwarding.*name='${ZONE_NAME}'"; then
-	uci add firewall forwarding
-	uci set firewall.@forwarding[-1].name="${ZONE_NAME}"
-	uci set firewall.@forwarding[-1].src='lan'
-	uci set firewall.@forwarding[-1].dest=$ZONE_NAME
-	uci set firewall.@forwarding[-1].family='ipv4'
-	uci commit firewall
-fi
+uci add firewall forwarding
+uci set firewall.@forwarding[-1].src='lan'
+uci set firewall.@forwarding[-1].dest=$ZONE_NAME
+uci set firewall.@forwarding[-1].family='ipv4'
+
+uci commit firewall
 
 ### =========================
 ### APPLY
 ### =========================
 
 service firewall restart
-ifdown $INTERFACE_NAME 2>/dev/null
 sleep 2
 ifup $INTERFACE_NAME
 
-echo "AWG WARP interface awg10 configured successfully"
+echo "AWG WARP awg10 reinstalled successfully"
