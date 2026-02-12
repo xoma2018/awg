@@ -607,7 +607,6 @@ checkPackageAndInstall "jq" "1"
 checkPackageAndInstall "curl" "1"
 checkPackageAndInstall "unzip" "1"
 checkPackageAndInstall "opera-proxy" "1"
-checkPackageAndInstall "zapret" "1"
 opkg remove --force-removal-of-dependent-packages "sing-box"
 
 findVersion="1.12.0"
